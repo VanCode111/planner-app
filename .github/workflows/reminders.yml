@@ -1,0 +1,41 @@
+name: Reminders
+
+# Напоминания о дне заказа без своего сервера.
+# Secrets: TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID. Variables: ORDER_DAY (обязательно), PERIOD_WEEKS, TZ_OFFSET, WEBAPP_URL.
+# Время в cron — UTC: 7:05 и 17:05 UTC = 10:05 и 20:05 по Москве. Для другого часового пояса поправьте строки ниже.
+# GitHub запускает расписания только в ветке по умолчанию и может задерживать их на несколько минут.
+on:
+  schedule:
+    - cron: '5 7 * * *'
+    - cron: '5 17 * * *'
+  workflow_dispatch:
+    inputs:
+      kind:
+        description: Какое напоминание
+        type: choice
+        options: [morning, evening]
+        default: morning
+      force:
+        description: Отправить, даже если сегодня не день заказа
+        type: boolean
+        default: true
+
+jobs:
+  remind:
+    if: vars.ORDER_DAY != ''
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node bot/remind.mjs
+        env:
+          BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          ORDER_DAY: ${{ vars.ORDER_DAY }}
+          PERIOD_WEEKS: ${{ vars.PERIOD_WEEKS || '1' }}
+          TZ_OFFSET: ${{ vars.TZ_OFFSET || '180' }}
+          WEBAPP_URL: ${{ vars.WEBAPP_URL }}
+          KIND: ${{ github.event_name == 'workflow_dispatch' && inputs.kind || (github.event.schedule == '5 17 * * *' && 'evening' || 'morning') }}
+          FORCE: ${{ github.event_name == 'workflow_dispatch' && inputs.force }}

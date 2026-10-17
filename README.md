@@ -46,8 +46,23 @@ npm run build     # сборка в dist/
    на платных планах GitHub; на бесплатном сделайте репозиторий публичным (секретов в нём нет).
 2. **Бот.** В [@BotFather](https://t.me/BotFather): `/newbot` → получите токен; `/newapp` (или *Bot Settings → Menu Button*)
    → укажите URL из шага 1. Этого достаточно, чтобы приложение открывалось из бота.
-3. **Напоминания (по желанию).** Mini App не может сам слать уведомления, поэтому есть маленький сервер
-   [`bot/server.mjs`](bot/server.mjs) без зависимостей:
+3. **Напоминания (по желанию).** Mini App и GitHub Pages сами слать сообщения не умеют. Есть два варианта.
+
+   **Без сервера — GitHub Actions (для себя).** Workflow [`reminders.yml`](.github/workflows/reminders.yml)
+   каждый день в 10:05 и 20:05 по Москве проверяет расписание и пишет вам в Telegram накануне вечером
+   и утром в день заказа.
+   1. Напишите своему боту `/start`, иначе он не сможет вам писать.
+   2. Узнайте свой chat id: откройте `https://api.telegram.org/bot<ТОКЕН>/getUpdates` и найдите `"chat":{"id":…}`.
+   3. *Settings → Secrets and variables → Actions*:
+      - **Secrets**: `TELEGRAM_BOT_TOKEN` — токен бота, `TELEGRAM_CHAT_ID` — chat id;
+      - **Variables**: `ORDER_DAY` — любой ваш день заказа, например `2026-10-24`;
+        по желанию `PERIOD_WEEKS` (`1` или `2`), `TZ_OFFSET` (минуты, Москва — `180`), `WEBAPP_URL` (кнопка «Открыть»).
+   4. Проверьте: *Actions → Reminders → Run workflow* — сообщение придёт сразу.
+
+   Расписание задаётся переменными, а не из приложения. GitHub запускает расписания только в ветке по умолчанию.
+
+   **Свой сервер — для нескольких пользователей.** Маленький сервер [`bot/server.mjs`](bot/server.mjs) без
+   зависимостей берёт день заказа и список прямо из приложения (переключатель в настройках):
 
    ```bash
    BOT_TOKEN=123:abc WEBAPP_URL=https://<user>.github.io/<repo>/ PORT=8080 npm run bot

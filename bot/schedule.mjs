@@ -12,7 +12,7 @@ const dayNum = (day) => {
   return Math.round(Date.UTC(y, m - 1, d) / DAY_MS);
 };
 
-const addDays = (day, n) => new Date((dayNum(day) + n) * DAY_MS).toISOString().slice(0, 10);
+export const addDays = (day, n) => new Date((dayNum(day) + n) * DAY_MS).toISOString().slice(0, 10);
 
 /** Локальные дата и час пользователя по смещению часового пояса (в минутах, восток — плюс). */
 export function localTime(nowMs, tzOffsetMin) {
@@ -52,6 +52,15 @@ export function dueReminder(user, nowMs) {
     return { kind: 'evening', day };
   }
   return null;
+}
+
+/**
+ * Для запуска по расписанию (GitHub Actions): нужно ли сейчас напоминание вида `kind`.
+ * Вечернее — если завтра день заказа, утреннее — если сегодня.
+ */
+export function isReminderDay(user, kind, nowMs) {
+  const { day } = localTime(nowMs, user.tzOffset ?? 0);
+  return isOrderDay(user, kind === 'evening' ? addDays(day, 1) : day);
 }
 
 export function reminderText(user, kind) {

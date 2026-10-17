@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { signInitData, validateInitData } from './initData.mjs';
-import { dueReminder, isOrderDay, reminderText } from './schedule.mjs';
+import { dueReminder, isOrderDay, isReminderDay, reminderText } from './schedule.mjs';
 
 const TOKEN = '123456:TEST-token';
 const NOW = Date.UTC(2026, 9, 21, 12, 0, 0);
@@ -44,6 +44,14 @@ describe('напоминания', () => {
   it('не повторяется и молчит, если выключено', () => {
     expect(dueReminder({ ...u, sent: { morning: '2026-10-24' } }, at('2026-10-24', 11))).toBeNull();
     expect(dueReminder({ ...u, enabled: false }, at('2026-10-24', 10))).toBeNull();
+  });
+
+  it('по расписанию: вечер накануне и утро дня заказа', () => {
+    expect(isReminderDay(u, 'evening', at('2026-10-23', 20))).toBe(true);
+    expect(isReminderDay(u, 'morning', at('2026-10-23', 10))).toBe(false);
+    expect(isReminderDay(u, 'morning', at('2026-10-24', 10))).toBe(true);
+    // 23:30 UTC пятницы — это уже суббота в Москве.
+    expect(isReminderDay(u, 'morning', Date.parse('2026-10-23T23:30:00Z'))).toBe(true);
   });
 
   it('называет число товаров и сумму', () => {

@@ -39,9 +39,11 @@ npm run build     # сборка в dist/
 
 ## Подключение к Telegram
 
-1. **Хостинг.** Mini App должен открываться по HTTPS. Проще всего GitHub Pages: в репозитории уже есть
-   workflow [`deploy.yml`](.github/workflows/deploy.yml). Включите *Settings → Pages → Source: GitHub Actions*
-   и смёрджите изменения в `main` — приложение появится по адресу `https://<user>.github.io/<repo>/`.
+1. **Хостинг.** Mini App должен открываться по HTTPS. Проще всего GitHub Pages: workflow
+   [`deploy.yml`](.github/workflows/deploy.yml) на каждый пуш в `main` собирает приложение и кладёт его в ветку
+   `gh-pages`. Один раз включите *Settings → Pages → Source: Deploy from a branch → `gh-pages` / (root)* —
+   приложение появится по адресу `https://<user>.github.io/<repo>/`. Для приватного репозитория Pages доступен
+   на платных планах GitHub; на бесплатном сделайте репозиторий публичным (секретов в нём нет).
 2. **Бот.** В [@BotFather](https://t.me/BotFather): `/newbot` → получите токен; `/newapp` (или *Bot Settings → Menu Button*)
    → укажите URL из шага 1. Этого достаточно, чтобы приложение открывалось из бота.
 3. **Напоминания (по желанию).** Mini App не может сам слать уведомления, поэтому есть маленький сервер

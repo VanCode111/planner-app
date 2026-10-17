@@ -1383,3 +1383,24 @@ body.has-mainbar .toast {
 .card-inset .stepper button {
   background: var(--surface);
 }
+
+.chip-row-flush {
+  padding: 0;
+}
+
+.pill-small {
+  min-height: 36px;
+  padding: 0 12px;
+  font-size: 14px;
+}
+
+.pill-add {
+  border-style: dashed;
+  border-color: var(--accent);
+  color: var(--accent-ink);
+}
+
+.field-label {
+  font-size: 15px;
+  font-weight: 600;
+}

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { addDays, weekday } from '../lib/dates';
-import { ackUrgent, forceAdd, initialState, learn, markItem, newItem, placeOrder, purchase, skip, updateSettings } from './actions';
+import { ackUrgent, completeOnboarding, forceAdd, initialState, learn, markItem, newItem, placeOrder, purchase, skip, updateSettings } from './actions';
+import { TEMPLATES } from './catalog';
 import { buildPlan, nextOrderDay, unitsToCover } from './forecast';
 import type { AppState, Item } from './types';
 
@@ -153,5 +154,17 @@ describe('обучение и покупки', () => {
     expect(s.savings).toHaveLength(1);
     expect(s.savings[0].amount).toBe(199);
     expect(buildPlan(s, WED).urgent).toHaveLength(0);
+  });
+});
+
+describe('онбординг', () => {
+  it('добавляет товары из каталога и свои, без повторов', () => {
+    const milk = TEMPLATES.find((t) => t.name.startsWith('Молоко'))!;
+    const s = completeOnboarding(initialState(WED), [milk], WED, ['Кетчуп острый', 'молоко, 1 л', 'Корм для рыбок']);
+    expect(s.onboarded).toBe(true);
+    expect(s.items.map((i) => i.name)).toEqual(['Молоко, 1 л', 'Кетчуп острый', 'Корм для рыбок']);
+    // Похожий шаблон подсказывает категорию и расход, незнакомый товар получает значения по умолчанию.
+    expect(s.items[1]).toMatchObject({ category: 'food', daysPerUnit: 30 });
+    expect(s.items[2]).toMatchObject({ category: 'other', daysPerUnit: 7, price: 0, runOutDay: null });
   });
 });

@@ -45,7 +45,7 @@ function Screen() {
 
 function SheetLayer() {
   const { sheet } = useNav();
-  if (sheet?.kind === 'quickAdd') return <QuickAddSheet />;
+  if (sheet?.kind === 'quickAdd') return <QuickAddSheet mode={sheet.mode} initialQuery={sheet.query} />;
   if (sheet?.kind === 'line') return <LineSheet key={sheet.itemId} itemId={sheet.itemId} />;
   return null;
 }

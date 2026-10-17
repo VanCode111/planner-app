@@ -1,11 +1,12 @@
 import { useState } from 'react';
-import { diffDays, formatDate, inDays, onWeekday, weekday } from '../lib/dates';
+import { addDays, diffDays, formatDate, inDays, onWeekday, plural, weekday } from '../lib/dates';
 import { formatRub } from '../lib/format';
 import {
   ackUrgent, addItem, deleteItem, forceAdd, markItem, newItem, placeOrder, runOutForMark, setQty, skip,
 } from '../model/actions';
+import { CATEGORIES, matchTemplate } from '../model/catalog';
 import { unitsToCover } from '../model/forecast';
-import type { Item } from '../model/types';
+import type { CategoryId, Item } from '../model/types';
 import { useNav } from '../nav';
 import { useApp } from '../state';
 import { MainButton } from '../telegram/MainButton';
@@ -86,51 +87,93 @@ export function LineSheet({ itemId }: { itemId: string }) {
 }
 
 type When = 'wait' | 'extra' | 'shop';
-type Level = 'low' | 'out';
+/** have — новый товар, который пока есть: просто начать отслеживать. */
+type Level = 'low' | 'out' | 'have';
 
 const norm = (s: string) => s.toLowerCase().replace(/ё/g, 'е').trim();
 
-/** «Что заканчивается?» — 5 секунд, чтобы ничего не забыть до заказа. */
-export function QuickAddSheet() {
+const DAY_OPTIONS = [3, 7, 14, 30, 60, 90];
+const dayLabel = (d: number) =>
+  ({ 3: '3 дня', 7: 'неделю', 14: '2 недели', 30: 'месяц', 60: '2 месяца', 90: '3 месяца' } as Record<number, string>)[d]
+  ?? `${d} ${plural(d, ['день', 'дня', 'дней'])}`;
+
+/**
+ * «Что заканчивается?» — 5 секунд, чтобы ничего не забыть до заказа.
+ * В режиме add — «Добавить товар»: новый товар можно просто начать отслеживать.
+ */
+export function QuickAddSheet({ mode = 'quick', initialQuery = '' }: { mode?: 'quick' | 'add'; initialQuery?: string }) {
   const { state, plan, today, update } = useApp();
   const nav = useNav();
-  const [query, setQuery] = useState('');
+  const [query, setQuery] = useState(initialQuery);
   const [picked, setPicked] = useState<Item | null>(null);
   const [isNew, setIsNew] = useState(false);
   const [level, setLevel] = useState<Level>('low');
   const [when, setWhen] = useState<When>('wait');
+  // Поля нового товара.
+  const [category, setCategory] = useState<CategoryId>('other');
+  const [days, setDays] = useState(7);
+  const [price, setPrice] = useState('');
 
   const q = norm(query);
   const byRunOut = (a: Item, b: Item) => (a.runOutDay ?? '9999').localeCompare(b.runOutDay ?? '9999');
   const results = q
     ? state.items.filter((it) => norm(it.name).includes(q)).sort(byRunOut).slice(0, 6)
-    : [...state.items].sort(byRunOut).slice(0, 6);
+    : mode === 'add' ? [] : [...state.items].sort(byRunOut).slice(0, 6);
   const exact = state.items.some((it) => norm(it.name) === q);
   const inPlan = new Set(plan.lines.map((l) => l.item.id));
 
-  const projected = picked ? runOutForMark(picked, level, today) : null;
+  const item: Item | null = picked && isNew
+    ? { ...picked, category, daysPerUnit: days, price: Number(price) || 0 }
+    : picked;
+  const projected = item && level !== 'have' ? runOutForMark(item, level, today) : null;
   const urgent = projected !== null && diffDays(projected, plan.next) < 0;
   const fee = state.settings.deliveryFee;
   const choice: When = urgent ? when : 'wait';
 
-  const pick = (item: Item, created: boolean) => {
-    setPicked(item);
-    setIsNew(created);
-    setLevel(created ? 'out' : 'low');
+  const pickExisting = (it: Item) => {
+    if (mode === 'add') {
+      nav.push({ name: 'item', id: it.id });
+      return;
+    }
+    setPicked(it);
+    setIsNew(false);
+    setLevel('low');
+    setWhen('wait');
+    haptic.select();
+  };
+
+  const pickNew = () => {
+    const created = newItem(today, { name: query.trim() });
+    const tpl = matchTemplate(created.name);
+    setPicked(created);
+    setIsNew(true);
+    setCategory(created.category);
+    setDays(created.daysPerUnit);
+    setPrice(tpl ? String(tpl.price) : '');
+    setLevel(mode === 'add' ? 'have' : 'out');
     setWhen('wait');
     haptic.select();
   };
 
   const confirm = () => {
-    if (!picked) return;
-    const id = picked.id;
-    const marked = (s: typeof state) => markItem(isNew ? addItem(s, picked) : s, id, level, today);
+    if (!item) return;
+    const id = item.id;
+
+    if (level === 'have') {
+      update((s) => addItem(s, { ...item, runOutDay: addDays(today, Math.max(1, Math.round(item.daysPerUnit / 2))) }));
+      haptic.success();
+      nav.closeSheet();
+      nav.toast('Добавили в запасы — предупредим, когда пора покупать');
+      return;
+    }
+
+    const marked = (s: typeof state) => markItem(isNew ? addItem(s, item) : s, id, level, today);
 
     if (choice === 'shop') {
       update((s) => {
         const s1 = marked(s);
-        const item = s1.items.find((it) => it.id === id)!;
-        return placeOrder(s1, { kind: 'shop', day: today, lines: [{ itemId: id, qty: unitsToCover(item, today, plan.next) }] }).state;
+        const bought = s1.items.find((it) => it.id === id)!;
+        return placeOrder(s1, { kind: 'shop', day: today, lines: [{ itemId: id, qty: unitsToCover(bought, today, plan.next) }] }).state;
       });
       haptic.success();
       nav.closeSheet();
@@ -151,22 +194,29 @@ export function QuickAddSheet() {
     }
   };
 
-  const cta = !urgent
-    ? `Добавить в заказ на ${formatDate(plan.next)}`
-    : choice === 'wait' ? 'Добавить в заказ' : choice === 'extra' ? 'Собрать дозаказ' : 'Отметить покупку';
+  const cta = level === 'have'
+    ? 'Добавить в запасы'
+    : !urgent
+      ? `Добавить в заказ на ${formatDate(plan.next)}`
+      : choice === 'wait' ? 'Добавить в заказ' : choice === 'extra' ? 'Собрать дозаказ' : 'Отметить покупку';
+
+  const dayOptions = DAY_OPTIONS.includes(days) ? DAY_OPTIONS : [...DAY_OPTIONS, days].sort((x, y) => x - y);
 
   return (
-    <Sheet title="Что заканчивается?" onClose={nav.closeSheet}>
+    <Sheet title={mode === 'add' ? 'Добавить товар' : 'Что заканчивается?'} onClose={nav.closeSheet}>
       <label className="search">
         <SearchIcon size={20} />
         <input
           autoFocus={!picked}
           value={query}
-          placeholder="Например, молоко"
+          placeholder={mode === 'add' ? 'Название, например «кетчуп»' : 'Например, молоко'}
           aria-label="Поиск товара"
           onChange={(e) => {
             setQuery(e.target.value);
             setPicked(null);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && q && !exact && !picked) pickNew();
           }}
         />
       </label>
@@ -174,43 +224,81 @@ export function QuickAddSheet() {
       {!picked && (
         <div className="stack-4 mt-8">
           {results.map((it) => (
-            <button key={it.id} className="row row-plain" onClick={() => pick(it, false)}>
+            <button key={it.id} className="row row-plain" onClick={() => pickExisting(it)}>
               <Avatar name={it.name} category={it.category} />
               <span className="row-main">
                 <span className="row-title">{it.name}</span>
-                <span className="row-sub">{inPlan.has(it.id) ? `уже в заказе · ${untilText(it, today)}` : untilText(it, today)}</span>
+                <span className="row-sub">
+                  {mode === 'add' ? 'уже в запасах' : inPlan.has(it.id) ? `уже в заказе · ${untilText(it, today)}` : untilText(it, today)}
+                </span>
               </span>
             </button>
           ))}
           {q && !exact && (
-            <button className="row row-plain row-action" onClick={() => pick(newItem(today, { name: query.trim() }), true)}>
+            <button className="row row-plain row-action" onClick={pickNew}>
               <span className="row-action-icon"><PlusIcon size={20} /></span>
               <span>Новый товар «{query.trim()}»</span>
             </button>
           )}
-          {!q && results.length === 0 && <p className="hint">Начните вводить название.</p>}
+          {!q && <p className="hint px-4">{mode === 'add' ? 'Впишите любое название — товар не обязательно должен быть в каталоге.' : 'Начните вводить название — или впишите новый товар.'}</p>}
         </div>
       )}
 
-      {picked && (
+      {picked && item && (
         <div className="stack-14 mt-12">
           <button className="picked" onClick={() => setPicked(null)}>
-            <Avatar name={picked.name} category={picked.category} />
+            <Avatar name={item.name} category={item.category} />
             <span className="row-main">
-              <span className="row-title">{picked.name}</span>
-              <span className="row-sub">{isNew ? 'новый товар' : `одной упаковки хватает на ${Math.round(picked.daysPerUnit)} дн.`}</span>
+              <span className="row-title">{item.name}</span>
+              <span className="row-sub">{isNew ? 'новый товар' : `одной упаковки хватает на ${Math.round(item.daysPerUnit)} дн.`}</span>
             </span>
             <CheckIcon className="accent-text" />
           </button>
+
+          {isNew && (
+            <div className="stack-12">
+              <div className="stack-8">
+                <div className="field-label">Категория</div>
+                <div className="chip-row chip-row-flush">
+                  {CATEGORIES.map((c) => (
+                    <button key={c.id} aria-pressed={category === c.id} className={`pill pill-small${category === c.id ? ' is-on' : ''}`}
+                      onClick={() => setCategory(c.id)}>{c.title}</button>
+                  ))}
+                </div>
+              </div>
+              <div className="stack-8">
+                <div className="field-label">Одной упаковки хватает на</div>
+                <div className="chip-row chip-row-flush">
+                  {dayOptions.map((d) => (
+                    <button key={d} aria-pressed={days === d} className={`pill pill-small${days === d ? ' is-on' : ''}`}
+                      onClick={() => setDays(d)}>{dayLabel(d)}</button>
+                  ))}
+                </div>
+                <div className="hint small">Примерно. Прогноз уточнится по вашим отметкам и покупкам.</div>
+              </div>
+              <label className="card-inset split">
+                <span>Цена за упаковку</span>
+                <span className="kv-input">
+                  <input inputMode="numeric" value={price} placeholder="не знаю" aria-label="Цена за упаковку"
+                    onChange={(e) => setPrice(e.target.value.replace(/\D/g, ''))} />
+                  ₽
+                </span>
+              </label>
+            </div>
+          )}
 
           <Segmented<Level>
             label="Сколько осталось"
             value={level}
             onChange={setLevel}
-            options={[{ value: 'low', label: 'Скоро закончится' }, { value: 'out', label: 'Уже нет' }]}
+            options={isNew
+              ? [{ value: 'out', label: 'Нет дома' }, { value: 'low', label: 'Кончается' }, { value: 'have', label: 'Есть запас' }]
+              : [{ value: 'low', label: 'Скоро закончится' }, { value: 'out', label: 'Уже нет' }]}
           />
 
-          {urgent ? (
+          {level === 'have' ? (
+            <p className="body-text">Начнём отслеживать: считаем, что осталось примерно пол-упаковки, и добавим в заказ, когда будет пора.</p>
+          ) : urgent ? (
             <>
               <div>
                 <div className="label-strong">Когда нужно?</div>
@@ -227,7 +315,7 @@ export function QuickAddSheet() {
             </>
           ) : (
             <p className="body-text">
-              {inPlan.has(picked.id) ? 'Уже в списке — уточним прогноз.' : `До ${formatDate(plan.next)} хватит — добавим в ближайший заказ.`}
+              {inPlan.has(item.id) ? 'Уже в списке — уточним прогноз.' : `До ${formatDate(plan.next)} хватит — добавим в ближайший заказ.`}
             </p>
           )}
           <MainButton text={cta} onClick={confirm} />

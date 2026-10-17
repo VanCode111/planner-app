@@ -40,7 +40,11 @@ export function StockScreen() {
     <div className="screen with-fab">
       <TopBar tab="stock" />
       {state.items.length === 0 ? (
-        <Empty title="Запасов пока нет" text="Добавьте то, что обычно покупаете: продукты, бытовую химию, корм питомцу." />
+        <Empty
+          title="Запасов пока нет"
+          text="Добавьте то, что обычно покупаете: продукты, бытовую химию, корм питомцу."
+          action={<button className="btn btn-primary" onClick={() => nav.openSheet({ kind: 'quickAdd', mode: 'add' })}>Добавить товар</button>}
+        />
       ) : (
         <>
           <label className="search search-surface mx-16">
@@ -83,6 +87,14 @@ export function StockScreen() {
             </section>
           ))}
           {groups.length === 0 && <p className="lead">Ничего не нашлось.</p>}
+          <section className="section">
+            <div className="card list">
+              <button className="row row-action" onClick={() => nav.openSheet({ kind: 'quickAdd', mode: 'add', query: query.trim() })}>
+                <span className="row-action-icon"><PlusIcon size={20} /></span>
+                <span>{q && groups.length === 0 ? `Добавить «${query.trim()}»` : 'Добавить товар'}</span>
+              </button>
+            </div>
+          </section>
         </>
       )}
 

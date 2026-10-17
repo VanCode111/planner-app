@@ -7,7 +7,7 @@ import type { Settings } from '../model/types';
 import { useApp } from '../state';
 import { MainButton } from '../telegram/MainButton';
 import { haptic } from '../telegram/webapp';
-import { CheckIcon, ChevronLeft } from '../ui/icons';
+import { CheckIcon, ChevronLeft, PlusIcon, SearchIcon } from '../ui/icons';
 import { OrderSettingsForm } from './OrderSettingsForm';
 
 const POINTS = [
@@ -21,6 +21,8 @@ export function Onboarding() {
   const [step, setStep] = useState(0);
   const [settings, setSettings] = useState<Settings>(state.settings);
   const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [custom, setCustom] = useState<string[]>([]);
+  const [query, setQuery] = useState('');
 
   if (step === 0) {
     return (
@@ -73,6 +75,18 @@ export function Onboarding() {
     });
   };
 
+  const norm = (v: string) => v.toLowerCase().replace(/ё/g, 'е').trim();
+  const q = norm(query);
+  const known = new Set([...TEMPLATES.map((t) => norm(t.name)), ...custom.map(norm)]);
+  const canAdd = q.length > 1 && !known.has(q);
+  const addCustom = () => {
+    if (!canAdd) return;
+    haptic.select();
+    setCustom((c) => [...c, query.trim()]);
+    setQuery('');
+  };
+  const total = picked.size + custom.length;
+
   return (
     <div className="screen">
       <header className="screen-header">
@@ -80,9 +94,41 @@ export function Onboarding() {
         <Progress step={2} />
         <h1 className="screen-title">Что вы обычно покупаете?</h1>
       </header>
-      <p className="lead">Отметьте товары — расход для них уже примерно известен и уточнится сам. Остальное добавите потом.</p>
+      <p className="lead">Отметьте товары из каталога или впишите свои — любые. Расход уточнится сам, остальное можно добавить потом.</p>
+
+      <label className="search search-surface mx-16">
+        <SearchIcon size={20} />
+        <input
+          value={query}
+          placeholder="Найти или добавить свой товар"
+          aria-label="Найти или добавить свой товар"
+          enterKeyHint="done"
+          onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && addCustom()}
+        />
+      </label>
+      {canAdd && (
+        <div className="chip-row mt-8">
+          <button className="pill pill-add" onClick={addCustom}><PlusIcon size={16} /> Добавить «{query.trim()}»</button>
+        </div>
+      )}
+
+      {custom.length > 0 && (
+        <section className="section">
+          <div className="section-head"><h2 className="section-title">Свои товары</h2></div>
+          <div className="chip-row">
+            {custom.map((name) => (
+              <button key={name} className="pill is-on" aria-label={`Убрать «${name}»`}
+                onClick={() => setCustom((c) => c.filter((x) => x !== name))}>
+                <CheckIcon size={16} /> {name}
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
+
       {CATEGORIES.map((c) => {
-        const list = TEMPLATES.filter((t) => t.category === c.id);
+        const list = TEMPLATES.filter((t) => t.category === c.id && (!q || norm(t.name).includes(q)));
         if (!list.length) return null;
         return (
           <section className="section" key={c.id}>
@@ -101,8 +147,8 @@ export function Onboarding() {
         );
       })}
       <MainButton
-        text={picked.size ? `Готово · ${picked.size} ${plural(picked.size, ['товар', 'товара', 'товаров'])}` : 'Пропустить'}
-        onClick={() => update((s) => completeOnboarding({ ...s, settings }, TEMPLATES.filter((t) => picked.has(t.name)), today))}
+        text={total ? `Готово · ${total} ${plural(total, ['товар', 'товара', 'товаров'])}` : 'Пропустить'}
+        onClick={() => update((s) => completeOnboarding({ ...s, settings }, TEMPLATES.filter((t) => picked.has(t.name)), today, custom))}
       />
     </div>
   );

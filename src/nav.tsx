@@ -9,7 +9,7 @@ export type Route =
   | { name: 'settings' };
 
 export type SheetSpec =
-  | { kind: 'quickAdd' }
+  | { kind: 'quickAdd'; mode?: 'quick' | 'add'; query?: string }
   | { kind: 'line'; itemId: string };
 
 interface NavCtx {

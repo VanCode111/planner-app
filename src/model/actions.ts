@@ -239,9 +239,18 @@ export function updateSettings(state: AppState, patch: Partial<Settings>, today:
   return { ...state, settings };
 }
 
-export function completeOnboarding(state: AppState, templates: Template[], today: Day): AppState {
+/** Завершить онбординг: товары из каталога и свои товары по названию. */
+export function completeOnboarding(state: AppState, templates: Template[], today: Day, customNames: string[] = []): AppState {
   const existing = new Set(state.items.map((it) => it.name.toLowerCase()));
-  const items = templates.filter((t) => !existing.has(t.name.toLowerCase())).map((t) => itemFromTemplate(today, t));
+  const items = [
+    ...templates.map((t) => itemFromTemplate(today, t)),
+    ...customNames.map((name) => newItem(today, { name: name.trim() })),
+  ].filter((it) => {
+    const key = it.name.toLowerCase();
+    if (!key || existing.has(key)) return false;
+    existing.add(key);
+    return true;
+  });
   return { ...state, onboarded: true, items: [...state.items, ...items] };
 }
 

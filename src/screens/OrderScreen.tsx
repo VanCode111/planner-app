@@ -26,7 +26,7 @@ export function OrderScreen() {
         <Empty
           title="Пока пусто"
           text="Добавьте товары, которые вы обычно покупаете, — и к каждому заказу список будет собираться сам."
-          action={<button className="btn btn-primary" onClick={() => nav.openSheet({ kind: 'quickAdd' })}>Добавить товар</button>}
+          action={<button className="btn btn-primary" onClick={() => nav.openSheet({ kind: 'quickAdd', mode: 'add' })}>Добавить товар</button>}
         />
       </div>
     );
